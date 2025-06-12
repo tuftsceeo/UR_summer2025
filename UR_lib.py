@@ -1,7 +1,6 @@
 # Written by Leia Hannes and Hannah Loly
 # Center for Engineering Education and Outreach
 # Summer of 2025
-# exmaple
 
 import math
 import numpy as np
