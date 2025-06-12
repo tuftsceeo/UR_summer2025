@@ -135,3 +135,87 @@ def linear_interp(coordinates_list, step_size, debugging=False, aligned=False):
             print(f"Point {i}: {coord}")
         print(f"Total interpolated points: {len(all_interpolated_coords)}")
     return all_interpolated_coords
+
+def draw_circle(center, radius, num_points=36, degrees=True, debugging=False, aligned=False):
+    """
+    Generates a circular trajectory for a 6-DOF robot arm.
+
+    Parameters:
+        center (list or tuple): [x, y, z, roll, pitch, yaw] - center point of the circle.
+        radius (float): Radius of the circle.
+        num_points (int): Number of points in the trajectory.
+        use_degrees (bool): If True, angles are in degrees. If False, in radians.
+
+    Returns:
+        list of lists: Each entry is [x, y, z, roll, pitch, yaw].
+    """
+
+def euler_rotation_matrix(rx, ry, rz, degrees=True):
+    """Create a rotation matrix from Euler angles (XYZ convention)."""
+    if degrees:
+        rx, ry, rz = np.radians([rx, ry, rz])
+
+    # Rotation around X-axis
+    Rx = np.array([
+        [1, 0, 0],
+        [0, np.cos(rx), -np.sin(rx)],
+        [0, np.sin(rx), np.cos(rx)]
+    ])
+
+    # Rotation around Y-axis
+    Ry = np.array([
+        [np.cos(ry), 0, np.sin(ry)],
+        [0, 1, 0],
+        [-np.sin(ry), 0, np.cos(ry)]
+    ])
+
+    # Rotation around Z-axis
+    Rz = np.array([
+        [np.cos(rz), -np.sin(rz), 0],
+        [np.sin(rz), np.cos(rz), 0],
+        [0, 0, 1]
+    ])
+
+    # Combined rotation (XYZ order: R = Rz @ Ry @ Rx)
+    return Rz @ Ry @ Rx
+
+def draw_circle(center, radius, num_points=36, degrees=True, debugging=False, aligned=False, plane_rotation=[0, 0, 0]):
+    """
+    Generates a circular 6-DOF trajectory.
+
+    Parameters:
+        center (list): [x, y, z, roll, pitch, yaw]
+        radius (float): Radius of the circle.
+        num_points (int): Number of points around the circle.
+        degrees (bool): True if orientation angles are in degrees.
+        debugging (bool): If True, prints debug info.
+        aligned (bool): If True, aligns end-effector orientation to circle tangent (not implemented yet).
+        plane_rotation (list): [rx, ry, rz] rotation (Euler angles) of the circle plane.
+
+    Returns:
+        list of poses: Each pose is [x, y, z, roll, pitch, yaw]
+    """
+    x0, y0, z0, roll, pitch, yaw = center
+    rot_matrix = euler_rotation_matrix(*plane_rotation, degrees=degrees)
+
+    angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
+    trajectory = []
+
+    for theta in angles:
+        # Circle in XY plane
+        local = np.array([
+            radius * np.cos(theta),
+            radius * np.sin(theta),
+            0
+        ])
+
+        # Apply rotation
+        rotated = rot_matrix @ local
+        position = np.array([x0, y0, z0]) + rotated
+        pose = list(position) + [roll, pitch, yaw]
+        trajectory.append(pose)
+    if aligned:
+        trajectory = align2d(trajectory)
+    if debugging:
+        print(f"Theta {np.degrees(theta):.1f}° -> {pose}")
+    return trajectory
