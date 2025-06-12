@@ -2,7 +2,7 @@
 # Center for Engineering Education and Outreach
 # Summer of 2025
 
-import math
+import math, copy
 import numpy as np
 
 def relative_to_global(trajectory, global_start, degrees=True):
@@ -41,6 +41,11 @@ def align2d(trajectory, degrees=True):
     if len(trajectory) == 6 and not isinstance(trajectory[0], list):
         print("ERROR: Expected multiple points but only 1 was given.")
         return
+    
+    #######################################################################################################################
+    # possible fix for orignial coordinates chaning
+    # trajectory = copy.deepcopy(trajectory) make a copy of the trajectory to avoid editing the original points
+    #######################################################################################################################
 
     # loop through each pair of points and calculate the angle
     for i in range(len(trajectory) - 1):
