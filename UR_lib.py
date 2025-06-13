@@ -52,7 +52,6 @@ def align2d(trajectory, degrees=True):
         
         # determine the direction that the arm is moving
         direction_vector = [trajectory[i+1][0] - trajectory[i][0], trajectory[i+1][1] - trajectory[i][1]] 
-        print(direction_vector)
     
         # calculate the global angle from the origin
         if direction_vector[0] == 0.0:
@@ -88,6 +87,11 @@ def linear_interp(coordinates_list, step_size, debugging=False, aligned=False):
     Return:
         Returns interpolated trajectory. In the case of an error, the original list is returned. 
     '''
+
+    if debugging:
+        print("\n--- Original Coordinates ---")
+        for coord in coordinates_list:
+            print(coord)
         
     all_interpolated_coords = []
 
@@ -125,11 +129,8 @@ def linear_interp(coordinates_list, step_size, debugging=False, aligned=False):
             all_interpolated_coords.append(interpolated_point)
     if aligned: 
         all_interpolated_coords = align2d(all_interpolated_coords)
+    
     if debugging:
-        print("\n--- Original Coordinates ---")
-        for coord in coordinates_list:
-            print(coord)
-
         print("\n--- Interpolated Coordinates ---")
         for i, coord in enumerate(all_interpolated_coords):
             print(f"Point {i}: {coord}")
