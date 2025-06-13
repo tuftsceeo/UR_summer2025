@@ -137,6 +137,32 @@ def linear_interp(coordinates_list, step_size, debugging=False, aligned=False):
         print(f"Total interpolated points: {len(all_interpolated_coords)}")
     return all_interpolated_coords
 
+
+def add_corners(trajectory):
+    '''
+    Create a new trajectory with extra points at the corners so that the end effector doesn't turn until
+    it reaches the next linear section of the trajectory.
+
+    Args:
+        trajectory (list): list of points the robot is moving through
+
+    Return:
+        Returns a new trajectory with corner points inserted.
+    '''
+    new_trajectory = []
+    
+    for point in range(len(trajectory) - 1):
+        # if the z-angles change, add a turning point between them
+        new_trajectory.append(trajectory[point])
+        
+        if trajectory[point][5] != trajectory[point + 1][5]:
+            turning_point = list(trajectory[point + 1])
+            turning_point[5] = trajectory[point][5]
+            new_trajectory.append(turning_point)
+        
+    return new_trajectory
+
+
 def draw_circle(center, radius, num_points=36, degrees=True, debugging=False, aligned=False):
     """
     Generates a circular trajectory for a 6-DOF robot arm.
