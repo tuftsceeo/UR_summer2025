@@ -23,6 +23,12 @@ def relative_to_global(trajectory, global_start, degrees=True):
         new_pose = np.add(global_trajectory[-1], rel).tolist()
         global_trajectory.append(new_pose)
     return global_trajectory
+
+def set_z(coordinates, z_value):
+    for point in coordinates:
+        if len(point) > 2:
+            point[2] = z_value
+    return coordinates
     
 
 def align2d(trajectory, degrees=True):
@@ -75,13 +81,13 @@ def align2d(trajectory, degrees=True):
     # return the new trajectory
     return trajectory
 
-def linear_interp(coordinates_list, step_size, debugging=False, aligned=False):
+def linear_interp(coordinates_list, step_size = .01, debugging=False, aligned=False):
     '''
     Linearly interpolate a trajectory. For trajectories that only change the angle, nothing will happen
 
     Args:
         coordinates_list (list): list of points (there must be at least 2)
-        step_size (float): step_size in meters. smaller steps result in a finer interpolation. 
+        step_size (float): step_size in meters. smaller steps result in a finer interpolation. Default 1 cm
         debugging: True will turn on print statements, including the results of the interpolation. False only prints errors. 
 
     Return:
@@ -235,7 +241,6 @@ def draw_circle(center, radius, num_points=36, degrees=True, debugging=False, al
             radius * np.sin(theta),
             0
         ])
-
         # Apply rotation
         rotated = rot_matrix @ local
         position = np.array([x0, y0, z0]) + rotated
