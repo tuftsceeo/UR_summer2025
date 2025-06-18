@@ -168,21 +168,6 @@ def add_corners(trajectory):
         
     return new_trajectory
 
-
-def draw_circle(center, radius, num_points=36, degrees=True, debugging=False, aligned=False):
-    """
-    Generates a circular trajectory for a 6-DOF robot arm.
-
-    Parameters:
-        center (list or tuple): [x, y, z, roll, pitch, yaw] - center point of the circle.
-        radius (float): Radius of the circle.
-        num_points (int): Number of points in the trajectory.
-        use_degrees (bool): If True, angles are in degrees. If False, in radians.
-
-    Returns:
-        list of lists: Each entry is [x, y, z, roll, pitch, yaw].
-    """
-
 def euler_rotation_matrix(rx, ry, rz, degrees=True):
     """Create a rotation matrix from Euler angles (XYZ convention)."""
     if degrees:
