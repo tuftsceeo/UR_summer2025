@@ -1,3 +1,7 @@
+# Written by Leia Hannes
+# Center for Engineering Education and Outreach
+# Summer of 2025
+
 import matplotlib.pyplot as plt
 import math
 
