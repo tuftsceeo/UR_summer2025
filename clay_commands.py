@@ -5,6 +5,8 @@
 # contains clay specific functions. UR_lib must also be imported. 
 
 import UR_lib
+import force
+from myur import MyUR3e
 
 def roll_sequence(center, length=.1, width=.01, cycles=3, linear_interp=True, debug=False):
     """
@@ -35,8 +37,8 @@ def roll_sequence(center, length=.1, width=.01, cycles=3, linear_interp=True, de
     cx, cy = center
     trajectory = []
     for i in range(num_points):
-        x = cx + (i - cycles) * width  # horizontal offset
-        y = cy + (length / 2) * (-1) ** i  # alternate up and down
+        x = cx + (length / 2) * (-1) ** i  # alternate up and down
+        y = cy + (i - cycles) * width  # horizontal offset
         trajectory.append([x, y, 0, 0, 0, 0])
 
     reverse = trajectory[-2::-1]  # exclude last point and reverse
@@ -49,3 +51,33 @@ def roll_sequence(center, length=.1, width=.01, cycles=3, linear_interp=True, de
         trajectory = UR_lib.linear_interp(trajectory)
     return trajectory
 
+def roll_coil(diameter):
+    """
+    rolls a coil! 
+
+    Parameters:
+        diameter (float): desired coil diameter [cm]
+
+    Returns:
+        NA
+    """
+    robot = MyUR3e()    
+    force_detected = 0
+    # write something to go down until force is felt
+    while force_detected < 5: # force in Newtons
+        print("do something")
+        force_detected = force.get_force()
+    print(f"stop! detected {force} N force.")
+
+    # read position
+    center = robot.read_global_pos()
+    z = .2 # or center[2] # not sure which is better here [m]
+    center = [center[0], center[1]]
+    trajectory = roll_sequence(center)
+
+    while z > diameter:
+        print(f"z is {z}. move again. ")
+        UR_lib.set_z(trajectory, z)
+        robot.move_global(trajectory, 15)
+        z -= .05    # move arm
+    print("done moving.")
