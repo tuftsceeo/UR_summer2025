@@ -31,7 +31,7 @@ def set_z(coordinates, z_value):
     return coordinates
     
 
-def align2d(trajectory, degrees=True):
+def align2d(traj, degrees=True):
     '''
     Calculate the global z-angles to turn the gripper perpendicular to the direction of a given trajectory. 
 
@@ -44,42 +44,44 @@ def align2d(trajectory, degrees=True):
     '''
 
     # verify that the input trajectory is correct
-    if len(trajectory) == 6 and not isinstance(trajectory[0], list):
-        print("ERROR: Expected multiple points but only 1 was given.")
-        return
-    
-    #######################################################################################################################
-    # possible fix for orignial coordinates chaning
-    # trajectory = copy.deepcopy(trajectory) make a copy of the trajectory to avoid editing the original points
-    #######################################################################################################################
+    #if len(traj) == 6 and not isinstance(traj[0], list):
+    #    print("ERROR: Expected multiple points but only 1 was given.")
+    #    return
 
-    # loop through each pair of points and calculate the angle
-    for i in range(len(trajectory) - 1):
-        
-        # determine the direction that the arm is moving
-        direction_vector = [trajectory[i+1][0] - trajectory[i][0], trajectory[i+1][1] - trajectory[i][1]] 
-    
-        # calculate the global angle from the origin
-        if direction_vector[0] == 0.0:
-            angle = math.pi/2
-        elif direction_vector[1] == 0.0:
-            angle = 0
+    # find the first angle to turn to
+
+    for i in range(len(traj) - 1):
+        x = traj[i+1][0] - traj[i][0]
+        y = traj[i+1][1] - traj[i][1]
+        if x == 0:
+            if y > 0:
+                angle = 90
+            else: 
+                angle = 270
+        elif x < 0:
+            angle = 180 + math.atan(y/x)*180/math.pi
+        elif y < 0:
+            angle = 360 + math.atan(y/x)*180/math.pi
         else:
-            angle = math.atan(direction_vector[1]/direction_vector[0])
+            angle = math.atan(y/x)*180/math.pi
 
-        if direction_vector[0] < 0 or direction_vector[1] < 0:
-            angle += math.pi
 
-        
-        # convert to degrees if needed
-        if degrees:
-            angle = angle*180/math.pi + 90
+        if i != 0:
+            if angle - traj[i-1][5] > 180:
+                angle = angle - 360
+            if traj[i-1][5] > 180 and (angle <= 180 or traj[i-1][5] > 360):
+                if int(traj[i-1][5]/360) > 0:
+                    angle += 360 * int(traj[i-1][5]/360)
+                else:
+                    angle += 360
 
-        # add the new angle
-        trajectory[i][5] = angle
+        traj[i][5] = angle
 
-    # return the new trajectory
-    return trajectory
+    for i in range(len(traj)):
+        traj[i][5] += 90
+
+    return traj
+
 
 def linear_interp(coordinates_list, step_size = .01, debugging=False, aligned=False):
     '''
