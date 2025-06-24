@@ -28,7 +28,7 @@ class ToolWrench(rclpy.node.Node):
         """
         Initialize the ToolWrench node.
         """
-        super().__init__("wrench_subscriber")
+        super().__init__("wrench_subscriber_2")
         self.subscription = self.create_subscription(
             WrenchStamped,
             "/force_torque_sensor_broadcaster/wrench",

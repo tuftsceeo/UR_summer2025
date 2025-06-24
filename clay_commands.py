@@ -4,9 +4,9 @@
 
 # contains clay specific functions. UR_lib must also be imported. 
 
-import UR_lib
 import force
 from myur import MyUR3e
+import UR_lib
 
 def roll_sequence(center, length=.1, width=.01, cycles=3, linear_interp=True, debug=False):
     """
@@ -79,5 +79,5 @@ def roll_coil(diameter):
         print(f"z is {z}. move again. ")
         UR_lib.set_z(trajectory, z)
         robot.move_global(trajectory, 15)
-        z -= .05    # move arm
+        z -= .03    # move arm
     print("done moving.")

@@ -236,5 +236,7 @@ def draw_circle(center, radius, num_points=36, degrees=True, debugging=False, al
     if aligned:
         trajectory = align2d(trajectory)
     if debugging:
-        print(f"Theta {np.degrees(theta):.1f}° -> {pose}")
+        print("\n--- Coordinates ---")
+        for i, coord in enumerate(trajectory):
+            print(f"Point {i}: {coord}")
     return trajectory
