@@ -449,27 +449,19 @@ class MyUR3e(rclpy.node.Node):
         if check_id():
             return
         while self._send_goal_future is None:  # screen None
-            if not self.health_scan():
-                return
             self._executor.spin_once()
             if check_id():
                 return
         while not self._send_goal_future.done():  # check done
-            if not self.health_scan():
-                return
             self._executor.spin_once()
             if check_id():
                 return
         if self._send_goal_future.result().accepted:
             while self._get_result_future is None:  # screen None
-                if not self.health_scan():
-                    return
                 self._executor.spin_once()
                 if check_id():
                     return
             while not self._get_result_future.done():  # check done
-                if not self.health_scan():
-                    return
                 self._executor.spin_once()
                 if check_id():
                     return
@@ -590,8 +582,6 @@ class MyUR3e(rclpy.node.Node):
         """
         self._executor.spin_once()
         while not client.done:
-            if not self.health_scan():
-                return
             self._executor.spin_once()
 
     ################################ CALLBACKS ################################
@@ -948,238 +938,258 @@ class Gripper(rclpy.node.Node):
             rclpy.spin_once(client)
             self.get_logger().debug(f"Waiting for gripper client")
 
-def relative_to_global(trajectory, global_start, degrees=True):
-    '''
-    Create a list of global movements from a list of relative movements.  
+class Trajectory(): 
+    def __init__(self):
+        self.trajectory = []
+    def relative_to_global(self, relative_trajectory, global_start, degrees=True):
+        '''
+        Create a list of global movements from a list of relative movements.  
 
-    Args:
-        trajectory (list): list of points (either start and end, or longer linear line)
-        global_start (list): global start point for the trajectory 
-        degrees (bool): true returns the angle in degrees, false returns the angle in radians
+        Args:
+            trajectory (list): list of points (either start and end, or longer linear line)
+            global_start (list): global start point for the trajectory 
+            degrees (bool): true returns the angle in degrees, false returns the angle in radians
 
-    Return:
-        Returns the new global trajectory. 
-    '''
-    global_trajectory = [global_start]
+        Return:
+            Returns the new global trajectory. 
+        '''
+        self.trajectory = [global_start]
 
-    for rel in trajectory:
-        new_pose = np.add(global_trajectory[-1], rel).tolist()
-        global_trajectory.append(new_pose)
-    return global_trajectory
+        for rel in relative_trajectory:
+            new_pose = np.add(self.trajectory[-1], rel).tolist()
+            self.trajectory.append(new_pose)
+        return self.trajectory
 
-def set_z(coordinates, z_value):
-    for point in coordinates:
-        if len(point) > 2:
-            point[2] = z_value
-    return coordinates
+    def set_z(self, z_value, coordinates_list=None):
+        '''
+        sets z value for list of coordinates. 
+
+        Args:
+            z-value (float): height in meters to set the z coordinate
+            trajectory (list): optional list of points (either start and end, or longer linear line). Default uses self. 
+
+        Return:
+            Returns the adjusted coordinates.
+        '''
+        if coordinates_list is not None: 
+            self.trajectory = coordinates_list
+        for point in self.trajectory:
+            if len(point) > 2:
+                point[2] = z_value
+        return self.trajectory
     
+    def align2d(self, coordinates_list=None, degrees=True):
+        '''
+        Calculate the global z-angles to turn the gripper perpendicular to the direction of a given trajectory. 
 
-def align2d(traj, degrees=True):
-    '''
-    Calculate the global z-angles to turn the gripper perpendicular to the direction of a given trajectory. 
+        Args:
+            trajectory (list): optional list of points (either start and end, or longer linear line). Default uses self. 
+            degrees (bool): true returns the angle in degrees, false returns the angle in radians
 
-    Args:
-        trajectory (list): list of points (either start and end, or longer linear line)
-        degrees (bool): true returns the angle in degrees, false returns the angle in radians
+        Return:
+            Returns the new global trajectory with the correct z-angles.
+        '''
 
-    Return:
-        Returns the new global trajectory with the correct z-angles.
-    '''
+        # verify that the input trajectory is correct
+        #if len(traj) == 6 and not isinstance(traj[0], list):
+        #    print("ERROR: Expected multiple points but only 1 was given.")
+        #    return
 
-    # verify that the input trajectory is correct
-    #if len(traj) == 6 and not isinstance(traj[0], list):
-    #    print("ERROR: Expected multiple points but only 1 was given.")
-    #    return
-
-    # find the first angle to turn to
-
-    for i in range(len(traj) - 1):
-        x = traj[i+1][0] - traj[i][0]
-        y = traj[i+1][1] - traj[i][1]
-        if x == 0:
-            if y > 0:
-                angle = 90
-            else: 
-                angle = 270
-        elif x < 0:
-            angle = 180 + math.atan(y/x)*180/math.pi
-        elif y < 0:
-            angle = 360 + math.atan(y/x)*180/math.pi
-        else:
-            angle = math.atan(y/x)*180/math.pi
-
-
-        if i != 0:
-            if angle - traj[i-1][5] > 180:
-                angle = angle - 360
-            if traj[i-1][5] > 180 and (angle <= 180 or traj[i-1][5] > 360):
-                if int(traj[i-1][5]/360) > 0:
-                    angle += 360 * int(traj[i-1][5]/360)
-                else:
-                    angle += 360
-
-        traj[i][5] = angle
-
-    for i in range(len(traj)):
-        traj[i][5] += 90
-
-    return traj
+        # find the first angle to turn to
+        if coordinates_list is not None:
+            self.trajectory = coordinates_list
+        for i in range(len(self.trajectory) - 1):
+            x = self.trajectory[i+1][0] - self.trajectory[i][0]
+            y = self.trajectory[i+1][1] - self.trajectory[i][1]
+            if x == 0:
+                if y > 0:
+                    angle = 90
+                else: 
+                    angle = 270
+            elif x < 0:
+                angle = 180 + math.atan(y/x)*180/math.pi
+            elif y < 0:
+                angle = 360 + math.atan(y/x)*180/math.pi
+            else:
+                angle = math.atan(y/x)*180/math.pi
 
 
-def linear_interp(coordinates_list, step_size = .01, debugging=False, aligned=False):
-    '''
-    Linearly interpolate a trajectory. For trajectories that only change the angle, nothing will happen
+            if i != 0:
+                if angle - self.trajectory[i-1][5] > 180:
+                    angle = angle - 360
+                if self.trajectory[i-1][5] > 180 and (angle <= 180 or self.trajectory[i-1][5] > 360):
+                    if int(self.trajectory[i-1][5]/360) > 0:
+                        angle += 360 * int(self.trajectory[i-1][5]/360)
+                    else:
+                        angle += 360
 
-    Args:
-        coordinates_list (list): list of points (there must be at least 2)
-        step_size (float): step_size in meters. smaller steps result in a finer interpolation. Default 1 cm
-        debugging: True will turn on print statements, including the results of the interpolation. False only prints errors. 
+            self.trajectory[i][5] = angle
 
-    Return:
-        Returns interpolated trajectory. In the case of an error, the original list is returned. 
-    '''
+        for i in range(len(self.trajectory)):
+            self.trajectory[i][5] += 90
 
-    if debugging:
-        print("\n--- Original Coordinates ---")
-        for coord in coordinates_list:
-            print(coord)
+        return self.trajectory
+
+    def linear_interp(self, coordinates_list=None, step_size = .01, debugging=False, aligned=False):
+        '''
+        Linearly interpolate a trajectory. For trajectories that only change the angle, nothing will happen
+
+        Args:
+            coordinates_list (list): optional list of points (there must be at least 2). default uses self. 
+            step_size (float): step_size in meters. smaller steps result in a finer interpolation. Default 1 cm
+            debugging: True will turn on print statements, including the results of the interpolation. False only prints errors. 
+
+        Return:
+            Returns interpolated trajectory. In the case of an error, the original list is returned. 
+        '''
+        if coordinates_list is not None: 
+            self.trajectory = coordinates_list
+        if debugging:
+            print("\n--- Original Coordinates ---")
+            for coord in self.trajectory:
+                print(coord)
+            
+        all_interpolated_coords = []
+
+        if len(self.trajectory) < 2:
+            print(f"Error: coordinate list invalid. Length is {len(self.trajectory)}. Ensure at least 2 points to interpolate")
+            return self.trajectory
+        if step_size <= 0: 
+            print("Error: step size must be greater than 0.")
+            return self.trajectory
+        all_interpolated_coords.append(self.trajectory[0]) # start w/ first value
+
+        for i in range(len(self.trajectory) - 1):
+            # find total dist between pts
+            position_diffs_sq = [(self.trajectory[i+1][j] - self.trajectory[i][j])**2 for j in range(3)]
+            segment_total_dist = math.sqrt(sum(position_diffs_sq))
+
+            # Calculate differences for angle components (roll, pitch, yaw)
+            angle_diffs = [self.trajectory[i+1][j+3] - self.trajectory[i][j+3] for j in range(3)]
+            num_steps_for_segment = int(segment_total_dist / step_size)
+
+            if num_steps_for_segment == 0:
+                num_steps_for_segment = 1 # take at least 1 step btwn
+
+            # Generate interpolated points for this segment
+            for step in range(1, num_steps_for_segment + 1):
+                t = (step/num_steps_for_segment) # Calculate interpolation factor (t)
+                interpolated_point = []
+                # Interpolate position components
+                for j in range(3):
+                    interpolated_point.append(self.trajectory[i][j] + (self.trajectory[i+1][j] - self.trajectory[i][j]) * t)
+                # Interpolate angle components
+                for j in range(3):
+                    interpolated_point.append(self.trajectory[i][j+3] + angle_diffs[j] * t)
+
+                all_interpolated_coords.append(interpolated_point)
+        self.trajectory = all_interpolated_coords
+        if aligned: 
+            self.trajectory = self.align2d()
         
-    all_interpolated_coords = []
+        if debugging:
+            print("\n--- Interpolated Coordinates ---")
+            for i, coord in enumerate(self.trajectory):
+                print(f"Point {i}: {coord}")
+            print(f"Total interpolated points: {len(self.trajectory)}")
+        return self.trajectory
 
-    if len(coordinates_list) < 2:
-        print(f"Error: coordinate list invalid. Length is {len(coordinates_list)}. Ensure at least 2 points to interpolate")
-        return coordinates_list
-    if step_size <= 0: 
-        print("Error: step size must be greater than 0.")
-        return coordinates_list
-    all_interpolated_coords.append(coordinates_list[0]) # start w/ first value
+    def add_corners(self, coordinates_list=None):
+        '''
+        Create a new trajectory with extra points at the corners so that the end effector doesn't turn until
+        it reaches the next linear section of the trajectory.
 
-    for i in range(len(coordinates_list) - 1):
-        # find total dist between pts
-        position_diffs_sq = [(coordinates_list[i+1][j] - coordinates_list[i][j])**2 for j in range(3)]
-        segment_total_dist = math.sqrt(sum(position_diffs_sq))
+        Args:
+            trajectory (list): optional list of points the robot is moving through. Default uses self.trajectory
 
-        # Calculate differences for angle components (roll, pitch, yaw)
-        angle_diffs = [coordinates_list[i+1][j+3] - coordinates_list[i][j+3] for j in range(3)]
-        num_steps_for_segment = int(segment_total_dist / step_size)
+        Return:
+            Returns a new trajectory with corner points inserted.
+        '''
 
-        if num_steps_for_segment == 0:
-            num_steps_for_segment = 1 # take at least 1 step btwn
+        if coordinates_list is not None:
+            self.trajectory = coordinates_list
 
-        # Generate interpolated points for this segment
-        for step in range(1, num_steps_for_segment + 1):
-            t = (step/num_steps_for_segment) # Calculate interpolation factor (t)
-            interpolated_point = []
-            # Interpolate position components
-            for j in range(3):
-                interpolated_point.append(coordinates_list[i][j] + (coordinates_list[i+1][j] - coordinates_list[i][j]) * t)
-            # Interpolate angle components
-            for j in range(3):
-                interpolated_point.append(coordinates_list[i][j+3] + angle_diffs[j] * t)
-
-            all_interpolated_coords.append(interpolated_point)
-    if aligned: 
-        all_interpolated_coords = align2d(all_interpolated_coords)
+        new_trajectory = []
+        
+        for point in range(len(self.trajectory) - 1):
+            # if the z-angles change, add a turning point between them
+            new_trajectory.append(self.trajectory[point])
+            
+            if self.trajectory[point][5] != self.trajectory[point + 1][5]:
+                turning_point = list(self.trajectory[point + 1])
+                turning_point[5] = self.trajectory[point][5]
+                new_trajectory.append(turning_point)
+        self.trajectory = new_trajectory
+        return self.trajectory
     
-    if debugging:
-        print("\n--- Interpolated Coordinates ---")
-        for i, coord in enumerate(all_interpolated_coords):
-            print(f"Point {i}: {coord}")
-        print(f"Total interpolated points: {len(all_interpolated_coords)}")
-    return all_interpolated_coords
+    def draw_circle(self, center, radius, num_points=36, degrees=True, debugging=False, aligned=False, plane_rotation=[0, 0, 0]):
+        """
+        Generates a circular 6-DOF trajectory.
 
+        Parameters:
+            center (list): [x, y, z, roll, pitch, yaw]
+            radius (float): Radius of the circle.
+            num_points (int): Number of points around the circle.
+            degrees (bool): True if orientation angles are in degrees.
+            debugging (bool): If True, prints debug info.
+            aligned (bool): If True, aligns end-effector orientation to circle tangent (not implemented yet).
+            plane_rotation (list): [rx, ry, rz] rotation (Euler angles) of the circle plane.
 
-def add_corners(trajectory):
-    '''
-    Create a new trajectory with extra points at the corners so that the end effector doesn't turn until
-    it reaches the next linear section of the trajectory.
+        Returns:
+            list of poses: Each pose is [x, y, z, roll, pitch, yaw]
+        """
+        x0, y0, z0, roll, pitch, yaw = center
+        rot_matrix = self.euler_rotation_matrix(*plane_rotation, degrees=degrees)
 
-    Args:
-        trajectory (list): list of points the robot is moving through
+        angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
+        self.trajectory = []
 
-    Return:
-        Returns a new trajectory with corner points inserted.
-    '''
-    new_trajectory = []
-    
-    for point in range(len(trajectory) - 1):
-        # if the z-angles change, add a turning point between them
-        new_trajectory.append(trajectory[point])
-        
-        if trajectory[point][5] != trajectory[point + 1][5]:
-            turning_point = list(trajectory[point + 1])
-            turning_point[5] = trajectory[point][5]
-            new_trajectory.append(turning_point)
-        
-    return new_trajectory
+        for theta in angles:
+            # Circle in XY plane
+            local = np.array([
+                radius * np.cos(theta),
+                radius * np.sin(theta),
+                0
+            ])
+            # Apply rotation
+            rotated = rot_matrix @ local
+            position = np.array([x0, y0, z0]) + rotated
+            pose = list(position) + [roll, pitch, yaw]
+            self.trajectory.append(pose)
+        if aligned:
+            self.trajectory = self.align2d()
+        if debugging:
+            print("\n--- Coordinates ---")
+            for i, coord in enumerate(self.trajectory):
+                print(f"Point {i}: {coord}")
+        return self.trajectory
 
-def euler_rotation_matrix(rx, ry, rz, degrees=True):
-    """Create a rotation matrix from Euler angles (XYZ convention)."""
-    if degrees:
-        rx, ry, rz = np.radians([rx, ry, rz])
+    @staticmethod
+    def euler_rotation_matrix(rx, ry, rz, degrees=True):
+        """Create a rotation matrix from Euler angles (XYZ convention)."""
+        if degrees:
+            rx, ry, rz = np.radians([rx, ry, rz])
 
-    # Rotation around X-axis
-    Rx = np.array([
-        [1, 0, 0],
-        [0, np.cos(rx), -np.sin(rx)],
-        [0, np.sin(rx), np.cos(rx)]
-    ])
-
-    # Rotation around Y-axis
-    Ry = np.array([
-        [np.cos(ry), 0, np.sin(ry)],
-        [0, 1, 0],
-        [-np.sin(ry), 0, np.cos(ry)]
-    ])
-
-    # Rotation around Z-axis
-    Rz = np.array([
-        [np.cos(rz), -np.sin(rz), 0],
-        [np.sin(rz), np.cos(rz), 0],
-        [0, 0, 1]
-    ])
-
-    # Combined rotation (XYZ order: R = Rz @ Ry @ Rx)
-    return Rz @ Ry @ Rx
-
-def draw_circle(center, radius, num_points=36, degrees=True, debugging=False, aligned=False, plane_rotation=[0, 0, 0]):
-    """
-    Generates a circular 6-DOF trajectory.
-
-    Parameters:
-        center (list): [x, y, z, roll, pitch, yaw]
-        radius (float): Radius of the circle.
-        num_points (int): Number of points around the circle.
-        degrees (bool): True if orientation angles are in degrees.
-        debugging (bool): If True, prints debug info.
-        aligned (bool): If True, aligns end-effector orientation to circle tangent (not implemented yet).
-        plane_rotation (list): [rx, ry, rz] rotation (Euler angles) of the circle plane.
-
-    Returns:
-        list of poses: Each pose is [x, y, z, roll, pitch, yaw]
-    """
-    x0, y0, z0, roll, pitch, yaw = center
-    rot_matrix = euler_rotation_matrix(*plane_rotation, degrees=degrees)
-
-    angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
-    trajectory = []
-
-    for theta in angles:
-        # Circle in XY plane
-        local = np.array([
-            radius * np.cos(theta),
-            radius * np.sin(theta),
-            0
+        # Rotation around X-axis
+        Rx = np.array([
+            [1, 0, 0],
+            [0, np.cos(rx), -np.sin(rx)],
+            [0, np.sin(rx), np.cos(rx)]
         ])
-        # Apply rotation
-        rotated = rot_matrix @ local
-        position = np.array([x0, y0, z0]) + rotated
-        pose = list(position) + [roll, pitch, yaw]
-        trajectory.append(pose)
-    if aligned:
-        trajectory = align2d(trajectory)
-    if debugging:
-        print("\n--- Coordinates ---")
-        for i, coord in enumerate(trajectory):
-            print(f"Point {i}: {coord}")
-    return trajectory
+
+        # Rotation around Y-axis
+        Ry = np.array([
+            [np.cos(ry), 0, np.sin(ry)],
+            [0, 1, 0],
+            [-np.sin(ry), 0, np.cos(ry)]
+        ])
+
+        # Rotation around Z-axis
+        Rz = np.array([
+            [np.cos(rz), -np.sin(rz), 0],
+            [np.sin(rz), np.cos(rz), 0],
+            [0, 0, 1]
+        ])
+
+        # Combined rotation (XYZ order: R = Rz @ Ry @ Rx)
+        return Rz @ Ry @ Rx

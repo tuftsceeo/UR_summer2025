@@ -2,7 +2,7 @@
 # Center for Engineering Education and Outreach
 # Summer of 2025
 
-import math, copy
+import math
 import numpy as np
 
 def relative_to_global(trajectory, global_start, degrees=True):
