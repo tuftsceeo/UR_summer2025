@@ -1,4 +1,4 @@
-# UR_lib.py
+# UR_library_2025.py
 # Modification and addition to MyUR3e.py (https://github.com/tuftsceeo/Universal-Robots-ROS2-CEEO/tree/main) 
 # Written by Leia Hannes and Hannah Loly
 # Center for Engineering Education and Outreach
