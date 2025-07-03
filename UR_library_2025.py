@@ -957,7 +957,6 @@ class Trajectory():
         self.trajectory = [global_start]
 
         for rel in relative_trajectory:
-            print(f"loop {rel}")
             new_pose = np.add(self.trajectory[-1], rel).tolist()
             self.trajectory.append(new_pose)
         return self.trajectory
