@@ -104,6 +104,7 @@ class MyUR3e(rclpy.node.Node):
         self.joint_states = JointStates()
         self.tool_wrench = ToolWrench()
         self.gripper = Gripper()
+        self.traj = Trajectory()
         self.done = True
 
         # Set Functions
@@ -946,7 +947,7 @@ class Trajectory():
         Create a list of global movements from a list of relative movements.  
 
         Args:
-            trajectory (list): list of points (either start and end, or longer linear line)
+            relative_trajectory (list): list of points (either start and end, or longer linear line)
             global_start (list): global start point for the trajectory 
             degrees (bool): true returns the angle in degrees, false returns the angle in radians
 
@@ -956,6 +957,7 @@ class Trajectory():
         self.trajectory = [global_start]
 
         for rel in relative_trajectory:
+            print(f"loop {rel}")
             new_pose = np.add(self.trajectory[-1], rel).tolist()
             self.trajectory.append(new_pose)
         return self.trajectory
