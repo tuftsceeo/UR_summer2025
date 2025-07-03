@@ -1,7 +1,8 @@
-# MyUR3e.py
-# Written by Aengus Kennedy and Liam Campbell
+# UR_library_2025.py
+# Modification and addition to MyUR3e.py (https://github.com/tuftsceeo/Universal-Robots-ROS2-CEEO/tree/main) 
+# Written by Leia Hannes and Hannah Loly
 # Center for Engineering Education and Outreach
-# Summer of 2024
+# Summer of 2025
 
 # External Libraries:
 import math
@@ -10,7 +11,6 @@ import os
 import time
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-from scipy.interpolate import make_interp_spline
 import threading
 
 # Internal Libraries:
@@ -103,8 +103,8 @@ class MyUR3e(rclpy.node.Node):
         self.ik_solver = URKinematics("ur3e")
         self.joint_states = JointStates()
         self.tool_wrench = ToolWrench()
-        self.dashboard = Dashboard()
         self.gripper = Gripper()
+        self.traj = Trajectory()
         self.done = True
 
         # Set Functions
@@ -121,93 +121,6 @@ class MyUR3e(rclpy.node.Node):
     ###########################################################################
 
     ########################### CLASS ACCESS METHODS ##########################
-
-    def set_debug_level(self, debug):
-        """
-        Toggle the print debug level.
-
-        Args:
-            debug (bool): True if debug logs are desired, False if not
-        """
-        if debug:
-            self.get_logger().set_level(rclpy.logging.LoggingSeverity.DEBUG)
-        else:
-            self.get_logger().set_level(rclpy.logging.LoggingSeverity.INFO)
-
-    def print_info(self, message):
-        """
-        Print a message through the ROS INFO logs.
-
-        Args:
-            message (string)
-        """
-        self.get_logger().info(message)
-
-    def print_debug(self, message):
-        """
-        Print a message through the ROS DEBUG logs.
-
-        Args:
-            message (string)
-        """
-        self.get_logger().debug(message)
-
-    def set_sent_callback(self, user_function):
-        """
-        Define function to be called when goal is recieved by the action server.
-
-        Args:
-            user_function (function)
-        """
-        self.response_callback = user_function
-
-    def set_finished_callback(self, user_function):
-        """
-        Define function to be called when goal is completed by the action server.
-
-        Args:
-            user_function (function)
-        """
-        self.result_callback = user_function
-
-    def set_timer_callback(self, user_function, period=None):
-        """
-        Define function to be called at set intervals.
-
-        Args:
-            user_function (function)
-            period (float, optional): period of the timer
-        """
-        if period:
-            self._timer.cancel()
-            self._timer = self.create_timer(period, self.get_timer_callback)
-        self.timer_callback = user_function
-
-    def clear_vis(self):
-        """
-        Clear all trajectories in the visualization plot.
-        """
-        self.vis.clear_plot()
-
-    def save_trajectory(self, name, trajectory, units=None, system=None):
-        """
-        Adds a trajectory to the collection and saves it to the local JSON file.
-
-        Args:
-            name (string): name that will be key of the stored coordinates.
-            trajectory (list): coordinates making the trajectory
-        """
-        self._trajectories[name] = {
-            "trajectory": trajectory,
-            "units": units,
-            "system": system,
-        }
-
-        try:
-            with open(self.trajectory_file, "w") as file:
-                json.dump(self._trajectories, file, indent=4)
-        except IOError as e:
-            print(f"An error occurred while saving the file: {e}")
 
     def get_trajectory(self, name):
         """
@@ -231,32 +144,6 @@ class MyUR3e(rclpy.node.Node):
             raise ValueError(f"No trajectory found with the name: {name}")
 
         return trajectory["trajectory"]
-
-    def clear_traj(self):
-        """
-        Clears all trajectories from memory and the JSON file.
-        """
-        self._trajectories = {}
-        if os.path.exists(self.trajectory_file):
-            try:
-                os.remove(self.trajectory_file)
-            except IOError as e:
-                print(f"An error occurred while deleting the file: {e}")
-
-    # Not operational until access to UR dashboard messages is resolved
-    def health_scan(self):
-        """
-        Get the current safety and robot mode.
-
-        Returns:
-            list: [Healthy (bool),Safety Mode (str), Robot Mode (str)]
-        """
-        health = self.dashboard.get()
-        if health[0] != 1 or health[1] not in [5, 7]:
-            health = self.error_code_to_str(health)
-            self.get_logger().info(f"System Error: {health[0]} and {health[1]}")
-            return False
-        return True
 
     ############################# SERVICE METHODS #############################
 
@@ -288,21 +175,6 @@ class MyUR3e(rclpy.node.Node):
                 self.joint_states.get_joints()["position"], to_degrees=True
             )
         return self.joint_states.get_joints()["position"]
-
-    def read_joints_vel(self, degrees=True):
-        """
-        Get the angular velocity of each joint in radians/s.
-
-        Args:
-            degrees (bool): True for degrees, False for radians
-        Returns:
-            list: [Pan, Lift, Elbow, Wrist 1, Wrist 2, Wrist 3]
-        """
-        if degrees:
-            return self.convert_angles(
-                self.joint_states.get_joints()["velocity"], to_degrees=True
-            )
-        return self.joint_states.get_joints()["velocity"]
 
     def read_joints_eff(self):
         """
@@ -343,56 +215,6 @@ class MyUR3e(rclpy.node.Node):
         return self.tool_wrench.get()["torque"]
 
     ############################# MOVEMENT METHODS ############################
-
-    def record(self, name, interval=1, threshold=0.05729):
-        """
-        Record the live motion of the arm using joint angles. Recording automatically starts
-        when the arm moves and stops when the arm is at rest. The trajectory will be saved to
-        the trajectory dictionary using the supplied name.
-
-        Args:
-            name (string): key of the trajectory
-            interval(float, optional): interval at which the position will be recorded
-            threshold(int, optional): threshold for movement
-        Returns:
-            list: recorded trajectory
-
-        """
-
-        # IDEA: taking data points once every period can result in very close physical points, especially at the
-        # end of the trajectory. This is a problem when using cubic splines. instead could take high frequency data
-        # and find evenly evenly divided datapoints by physical distance?
-
-        start = False
-        first_pose = self.read_joints_pos()
-
-        while not start:
-            curr_pose = self.read_joints_pos()
-            distance = np.linalg.norm(np.array(first_pose) - np.array(curr_pose))
-            if abs(distance) > threshold:
-                start = True
-
-        print("Starting trajectory")
-
-        recording = True
-        trajectory = []
-        trajectory.append(first_pose)
-
-        while recording:
-            curr_pose = self.read_joints_pos()
-            trajectory.append(curr_pose)
-            time.sleep(interval)
-            distance = np.linalg.norm(
-                np.array(curr_pose) - np.array(self.read_joints_pos())
-            )
-            if abs(distance) < threshold:
-                recording = False
-
-        print(f"Saved trajectory as: {name}")
-
-        self.save_trajectory(name, trajectory)
-
-        # return trajectory # results in trajectory coords printed out unless assigned to var
 
     def solve_ik(self, cords, degrees=True, q_guess=None, out_degrees=True):
         """
@@ -451,43 +273,6 @@ class MyUR3e(rclpy.node.Node):
 
         return cords
 
-    def interpolate(self, trajectory, method="linear",fidelity=50):
-        """
-        Interpolate between points in a trajectory.
-
-        Args:
-            trajectory (list): trajectory to be interpolated
-            method (string, optional): either linear, arc, or spline
-            fidelity (int, optional): number of interpolated points between each set point
-        Returns:
-            list: interpolated trajectory
-        """
-        if method == "spline":
-            k = 3
-        elif method == "arc":
-            k = 2
-        elif method == "linear":
-            k = 1
-        points = np.array(trajectory)
-        # Calculate distances between consecutive points (Euclidean distance for position)
-        distances = np.linalg.norm(np.diff(points[:, :6], axis=0), axis=1)
-        # Compute cumulative arc-length
-        arc_length = np.zeros(len(points))
-        arc_length[1:] = np.cumsum(distances)
-        # Create a spline that interpolates all 6 dimensions based on arc_length
-        try:
-            spline = make_interp_spline(arc_length, points, k=k)  # k=3 for cubic spline
-        except ValueError:
-            if method == "spline":
-                raise ValueError("Spline interpolation requires four or more trajectory points")
-            elif method == "arc":
-                raise ValueError("Arc interpolation requires 3 or more trajectory points")
-            elif method == "linear":
-                raise ValueError("Linear interpolation requires two or more trajectory points")
-        # Define a new arc_length range for a smooth trajectory
-        arc_length_new = np.linspace(arc_length.min(), arc_length.max(), (len(trajectory)-1)*fidelity)
-        # Evaluate the spline for the new arc_length range
-        return spline(arc_length_new).tolist()
 
     def move_gripper(self, position, speed=50, force=50, wait=True):
         """
@@ -526,13 +311,6 @@ class MyUR3e(rclpy.node.Node):
         elif type(coordinates[0]) != list:  # Format single point
             coordinates = [coordinates]
 
-        if interp is not None:
-            if len(coordinates[0]) == 7:
-                raise ValueError(
-                    "Interpolation not currently supported for quaternion rotations"
-                )
-            coordinates = self.interpolate(coordinates, interp)
-
         joint_positions = []
         for i, cord in enumerate(coordinates):
             if i == 0:
@@ -564,55 +342,6 @@ class MyUR3e(rclpy.node.Node):
                 wait=wait,
                 interp=None,
             )
-
-    def move_global_r(
-        self, pos_deltas, time=5, degrees=True, vis_only=False, wait=True, interp=None
-    ):
-        """
-        Move the robot relative to where it was using global axes.
-
-        Args:
-            pos_deltas (list): List of relative movements.
-                either [x, y, z, rx, ry, rz] or [x, y, z, qx, qy, qz, qw].
-            time (float/tuple, optional): If float, time step between each coordinate. If
-                tuple, first float represents time to first pos, second float is all following steps.
-            degrees (bool): True for degrees, False for radians. Ignore if using quaternions.
-            vis_only (bool, optional): True if no motion is desired, False if motion is desired.
-            wait (bool, optional): True if blocking is desired, False if non blocking is desired.
-        """
-        if type(time) == tuple and time[0] != 'cv':
-            raise ValueError(
-                "Time cannot be a standard tuple: relative movements do not need time to arrive at first point."
-            )
-        elif type(time) == tuple and len(time) == 3:
-            raise ValueError(
-                "Relative movements do not need time to arrive at first point. Use time=('cv',vel)"
-            )
-        elif type(time) == tuple and len(time) == 2:
-            time = (time[0],time[1],time[1])
-        else:
-            time=(time / len(pos_deltas), time - time / len(pos_deltas))
-
-        if type(pos_deltas) == str:  # Retrieve trajectory from json by name
-            pos_deltas = self.get_trajectory(pos_deltas)
-        elif type(pos_deltas[0]) != list:  # Format single point
-            pos_deltas = [pos_deltas]
-
-        sequence = []
-        for i, delta in enumerate(pos_deltas):
-            if i == 0:
-                curr = self.read_global_pos()
-                sequence.append([sum(x) for x in zip(curr, delta)])
-            else:
-                sequence.append([sum(x) for x in zip(sequence[i - 1], delta)])
-        self.move_global(
-            sequence,
-            time=time,
-            degrees=degrees,
-            vis_only=vis_only,
-            wait=wait,
-            interp=interp,
-        )
 
     def move_joints_r(
         self, joint_deltas, time=5, degrees=True, vis_only=False, wait=True, interp=None
@@ -653,15 +382,7 @@ class MyUR3e(rclpy.node.Node):
             interp=interp,
         )
 
-    def move_joints(
-        self,
-        joint_positions,
-        time=5,
-        degrees=True,
-        vis_only=False,
-        wait=True,
-        interp=None,
-    ):
+    def move_joints(self, joint_positions, time=5, degrees=True, vis_only=False, wait=True, interp=None):
         """
         Move the robot joints to the specified angular positions.
 
@@ -729,27 +450,19 @@ class MyUR3e(rclpy.node.Node):
         if check_id():
             return
         while self._send_goal_future is None:  # screen None
-            if not self.health_scan():
-                return
             self._executor.spin_once()
             if check_id():
                 return
         while not self._send_goal_future.done():  # check done
-            if not self.health_scan():
-                return
             self._executor.spin_once()
             if check_id():
                 return
         if self._send_goal_future.result().accepted:
             while self._get_result_future is None:  # screen None
-                if not self.health_scan():
-                    return
                 self._executor.spin_once()
                 if check_id():
                     return
             while not self._get_result_future.done():  # check done
-                if not self.health_scan():
-                    return
                 self._executor.spin_once()
                 if check_id():
                     return
@@ -870,8 +583,6 @@ class MyUR3e(rclpy.node.Node):
         """
         self._executor.spin_once()
         while not client.done:
-            if not self.health_scan():
-                return
             self._executor.spin_once()
 
     ################################ CALLBACKS ################################
@@ -908,6 +619,7 @@ class MyUR3e(rclpy.node.Node):
 
             self.get_logger().debug(f"Goal #{self._id} accepted :)")
             self._get_result_future = goal_handle.get_result_async()
+
             this_future = self._get_result_future
             this_future.add_done_callback(
                 lambda this_future: self.get_result_callback(this_future, curr_id)
@@ -1024,7 +736,6 @@ class MyUR3e(rclpy.node.Node):
                 robot_mode = "UPDATING_FIRMWARE"
             return [safety_mode, robot_mode]
 
-
 class JointStates(rclpy.node.Node):
     """
     Subscribe to the joint_states topic.
@@ -1081,7 +792,6 @@ class JointStates(rclpy.node.Node):
         while not client.done:
             rclpy.spin_once(client)
             self.get_logger().debug(f"Waiting for joint_states_client")
-
 
 class ToolWrench(rclpy.node.Node):
     """
@@ -1145,7 +855,6 @@ class ToolWrench(rclpy.node.Node):
         while not client.done:
             rclpy.spin_once(client)
             self.get_logger().debug(f"Waiting for wrench client")
-
 
 class Gripper(rclpy.node.Node):
     """
@@ -1230,84 +939,259 @@ class Gripper(rclpy.node.Node):
             rclpy.spin_once(client)
             self.get_logger().debug(f"Waiting for gripper client")
 
-
-# BUG: Robot Mode and Safety Mode appear to not be publishing continuously
-#      Until this is figured out this node will freeze whenever it is spun
-from ur_dashboard_msgs.msg import RobotMode
-from ur_dashboard_msgs.msg import SafetyMode
-
-
-class Dashboard(rclpy.node.Node):
-    """
-    Subscribe and publish to Gripper topics.
-    """
-
+class Trajectory(): 
     def __init__(self):
-        """
-        Initialize the dashboard node.
-        """
-        super().__init__("ur_dashboard_client")
-        self.safety_sub = self.create_subscription(
-            SafetyMode,
-            "/io_and_status_controller/safety_mode",
-            self.safety_sub_callback,
-            10,
-        )
-
-        self.robot_sub = self.create_subscription(
-            RobotMode,
-            "/io_and_status_controller/robot_mode",
-            self.robot_sub_callback,
-            10,
-        )
-
-        self.timer = self.create_timer(0.25, self.timer_callback)
-
-        self.states = []
-        self.safety_done = False
-        self.robot_done = False
-
-    def timer_callback(self):
-        rclpy.spin_once(self)
-
-    def safety_sub_callback(self, msg):
-        """
-        Callback for when safety sub data is received.
+        self.trajectory = []
+    def relative_to_global(self, relative_trajectory, global_start, degrees=True):
+        '''
+        Create a list of global movements from a list of relative movements.  
 
         Args:
-            msg (SafetyMode): The safety mode message.
-        """
-        self.states[0] = msg.data
-        self.safety_done = True
+            relative_trajectory (list): list of points (either start and end, or longer linear line)
+            global_start (list): global start point for the trajectory 
+            degrees (bool): true returns the angle in degrees, false returns the angle in radians
 
-    def robot_sub_callback(self, msg):
-        """
-        Callback for when robot sub data is received.
+        Return:
+            Returns the new global trajectory. 
+        '''
+        self.trajectory = [global_start]
+
+        for rel in relative_trajectory:
+            print(f"loop {rel}")
+            new_pose = np.add(self.trajectory[-1], rel).tolist()
+            self.trajectory.append(new_pose)
+        return self.trajectory
+
+    def set_z(self, z_value, coordinates_list=None):
+        '''
+        sets z value for list of coordinates. 
 
         Args:
-            msg (RobotMode): The robot mode message.
-        """
-        self.states[1] = msg.data
-        self.robot_done = True
+            z-value (float): height in meters to set the z coordinate
+            trajectory (list): optional list of points (either start and end, or longer linear line). Default uses self. 
 
-    def get(self):
+        Return:
+            Returns the adjusted coordinates.
+        '''
+        if coordinates_list is not None: 
+            self.trajectory = coordinates_list
+        for point in self.trajectory:
+            if len(point) > 2:
+                point[2] = z_value
+        return self.trajectory
+    
+    def align2d(self, coordinates_list=None, degrees=True):
+        '''
+        Calculate the global z-angles to turn the gripper perpendicular to the direction of a given trajectory. 
+
+        Args:
+            trajectory (list): optional list of points (either start and end, or longer linear line). Default uses self. 
+            degrees (bool): true returns the angle in degrees, false returns the angle in radians
+
+        Return:
+            Returns the new global trajectory with the correct z-angles.
+        '''
+
+        # verify that the input trajectory is correct
+        #if len(traj) == 6 and not isinstance(traj[0], list):
+        #    print("ERROR: Expected multiple points but only 1 was given.")
+        #    return
+
+        # find the first angle to turn to
+        if coordinates_list is not None:
+            self.trajectory = coordinates_list
+        for i in range(len(self.trajectory) - 1):
+            x = self.trajectory[i+1][0] - self.trajectory[i][0]
+            y = self.trajectory[i+1][1] - self.trajectory[i][1]
+            if x == 0:
+                if y > 0:
+                    angle = 90
+                else: 
+                    angle = 270
+            elif x < 0:
+                angle = 180 + math.atan(y/x)*180/math.pi
+            elif y < 0:
+                angle = 360 + math.atan(y/x)*180/math.pi
+            else:
+                angle = math.atan(y/x)*180/math.pi
+
+
+            if i != 0:
+                if angle - self.trajectory[i-1][5] > 180:
+                    angle = angle - 360
+                if self.trajectory[i-1][5] > 180 and (angle <= 180 or self.trajectory[i-1][5] > 360):
+                    if int(self.trajectory[i-1][5]/360) > 0:
+                        angle += 360 * int(self.trajectory[i-1][5]/360)
+                    else:
+                        angle += 360
+
+            self.trajectory[i][5] = angle
+
+        for i in range(len(self.trajectory)):
+            self.trajectory[i][5] += 90
+
+        return self.trajectory
+
+    def linear_interp(self, coordinates_list=None, step_size = .01, debugging=False, aligned=False):
+        '''
+        Linearly interpolate a trajectory. For trajectories that only change the angle, nothing will happen
+
+        Args:
+            coordinates_list (list): optional list of points (there must be at least 2). default uses self. 
+            step_size (float): step_size in meters. smaller steps result in a finer interpolation. Default 1 cm
+            debugging: True will turn on print statements, including the results of the interpolation. False only prints errors. 
+
+        Return:
+            Returns interpolated trajectory. In the case of an error, the original list is returned. 
+        '''
+        if coordinates_list is not None: 
+            self.trajectory = coordinates_list
+        if debugging:
+            print("\n--- Original Coordinates ---")
+            for coord in self.trajectory:
+                print(coord)
+            
+        all_interpolated_coords = []
+
+        if len(self.trajectory) < 2:
+            print(f"Error: coordinate list invalid. Length is {len(self.trajectory)}. Ensure at least 2 points to interpolate")
+            return self.trajectory
+        if step_size <= 0: 
+            print("Error: step size must be greater than 0.")
+            return self.trajectory
+        all_interpolated_coords.append(self.trajectory[0]) # start w/ first value
+
+        for i in range(len(self.trajectory) - 1):
+            # find total dist between pts
+            position_diffs_sq = [(self.trajectory[i+1][j] - self.trajectory[i][j])**2 for j in range(3)]
+            segment_total_dist = math.sqrt(sum(position_diffs_sq))
+
+            # Calculate differences for angle components (roll, pitch, yaw)
+            angle_diffs = [self.trajectory[i+1][j+3] - self.trajectory[i][j+3] for j in range(3)]
+            num_steps_for_segment = int(segment_total_dist / step_size)
+
+            if num_steps_for_segment == 0:
+                num_steps_for_segment = 1 # take at least 1 step btwn
+
+            # Generate interpolated points for this segment
+            for step in range(1, num_steps_for_segment + 1):
+                t = (step/num_steps_for_segment) # Calculate interpolation factor (t)
+                interpolated_point = []
+                # Interpolate position components
+                for j in range(3):
+                    interpolated_point.append(self.trajectory[i][j] + (self.trajectory[i+1][j] - self.trajectory[i][j]) * t)
+                # Interpolate angle components
+                for j in range(3):
+                    interpolated_point.append(self.trajectory[i][j+3] + angle_diffs[j] * t)
+
+                all_interpolated_coords.append(interpolated_point)
+        self.trajectory = all_interpolated_coords
+        if aligned: 
+            self.trajectory = self.align2d()
+        
+        if debugging:
+            print("\n--- Interpolated Coordinates ---")
+            for i, coord in enumerate(self.trajectory):
+                print(f"Point {i}: {coord}")
+            print(f"Total interpolated points: {len(self.trajectory)}")
+        return self.trajectory
+
+    def add_corners(self, coordinates_list=None):
+        '''
+        Create a new trajectory with extra points at the corners so that the end effector doesn't turn until
+        it reaches the next linear section of the trajectory.
+
+        Args:
+            trajectory (list): optional list of points the robot is moving through. Default uses self.trajectory
+
+        Return:
+            Returns a new trajectory with corner points inserted.
+        '''
+
+        if coordinates_list is not None:
+            self.trajectory = coordinates_list
+
+        new_trajectory = []
+        
+        for point in range(len(self.trajectory) - 1):
+            # if the z-angles change, add a turning point between them
+            new_trajectory.append(self.trajectory[point])
+            
+            if self.trajectory[point][5] != self.trajectory[point + 1][5]:
+                turning_point = list(self.trajectory[point + 1])
+                turning_point[5] = self.trajectory[point][5]
+                new_trajectory.append(turning_point)
+        self.trajectory = new_trajectory
+        return self.trajectory
+    
+    def draw_circle(self, center, radius, num_points=36, degrees=True, debugging=False, aligned=False, plane_rotation=[0, 0, 0]):
         """
-        Get the current safety and robot mode.
+        Generates a circular 6-DOF trajectory.
+
+        Parameters:
+            center (list): [x, y, z, roll, pitch, yaw]
+            radius (float): Radius of the circle.
+            num_points (int): Number of points around the circle.
+            degrees (bool): True if orientation angles are in degrees.
+            debugging (bool): If True, prints debug info.
+            aligned (bool): If True, aligns end-effector orientation to circle tangent (not implemented yet).
+            plane_rotation (list): [rx, ry, rz] rotation (Euler angles) of the circle plane.
 
         Returns:
-            list: The current safety and robot mode of the UR arm.
+            list of poses: Each pose is [x, y, z, roll, pitch, yaw]
         """
-        return [1, 7]  # temporary fix for BUG
-        self.wait()
-        self.safety_done = False
-        self.robot_done = False
-        return self.states
+        x0, y0, z0, roll, pitch, yaw = center
+        rot_matrix = self.euler_rotation_matrix(*plane_rotation, degrees=degrees)
 
-    def wait(self):
-        """
-        Wait for the dashboard to be updated.
-        """
-        rclpy.spin_once(self)
-        while not self.safety_done and not self.robot_done:
-            rclpy.spin_once(self)
-            self.get_logger().debug(f"Waiting for dashboard client")
+        angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
+        self.trajectory = []
+
+        for theta in angles:
+            # Circle in XY plane
+            local = np.array([
+                radius * np.cos(theta),
+                radius * np.sin(theta),
+                0
+            ])
+            # Apply rotation
+            rotated = rot_matrix @ local
+            position = np.array([x0, y0, z0]) + rotated
+            pose = list(position) + [roll, pitch, yaw]
+            self.trajectory.append(pose)
+        if aligned:
+            self.trajectory = self.align2d()
+        if debugging:
+            print("\n--- Coordinates ---")
+            for i, coord in enumerate(self.trajectory):
+                print(f"Point {i}: {coord}")
+        return self.trajectory
+
+    @staticmethod
+    def euler_rotation_matrix(rx, ry, rz, degrees=True):
+        """Create a rotation matrix from Euler angles (XYZ convention)."""
+        if degrees:
+            rx, ry, rz = np.radians([rx, ry, rz])
+
+        # Rotation around X-axis
+        Rx = np.array([
+            [1, 0, 0],
+            [0, np.cos(rx), -np.sin(rx)],
+            [0, np.sin(rx), np.cos(rx)]
+        ])
+
+        # Rotation around Y-axis
+        Ry = np.array([
+            [np.cos(ry), 0, np.sin(ry)],
+            [0, 1, 0],
+            [-np.sin(ry), 0, np.cos(ry)]
+        ])
+
+        # Rotation around Z-axis
+        Rz = np.array([
+            [np.cos(rz), -np.sin(rz), 0],
+            [np.sin(rz), np.cos(rz), 0],
+            [0, 0, 1]
+        ])
+
+        # Combined rotation (XYZ order: R = Rz @ Ry @ Rx)
+        return Rz @ Ry @ Rx
