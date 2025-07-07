@@ -54,7 +54,7 @@ class ClaySculpt(MyUR3e):
             self.traj.set_z(z)
             self.move_global(self.traj.trajectory, 15)
             z -= .002    # move arm
-        self.traj.relative_to_global([[0, 0, .05, 0, 0, 0]], self.traj.trajectory)
+        self.traj.relative_to_global([[0, 0, .05, 0, 0, 0]], self.traj.trajectory[len(self.traj.trajectory) - 1])
         self.move_global(self.traj.trajectory)
         print("done moving.")
 
