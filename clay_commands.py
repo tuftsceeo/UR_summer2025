@@ -1,7 +1,7 @@
 # Written by Hannah Loly
 # Center for Engineering Education and Outreach
 # Summer of 2025
-from UR_library_2025 import MyUR3e, Trajectory
+from UR_summer2025.UR_library_2025 import MyUR3e, Trajectory
 import time
 import numpy as np
 
