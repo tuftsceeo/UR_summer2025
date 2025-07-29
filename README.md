@@ -20,3 +20,5 @@ Summer 2025 work by Leia Hannes and Hannah Loly.
 **Impact_Testing** is the Jupyter page that runs the full impact test
 
 **LEGO_controller** is the Jupyter page for integrating LEGOs with the arm
+
+**RobotControlPanel.zip and DemoRobotControlPanel.zip** are the pyscript pages for controlling the robot
