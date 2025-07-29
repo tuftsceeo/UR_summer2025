@@ -342,6 +342,55 @@ class MyUR3e(rclpy.node.Node):
                 wait=wait,
                 interp=None,
             )
+            
+    def move_global_r(
+        self, pos_deltas, time=5, degrees=True, vis_only=False, wait=True, interp=None
+    ):
+        """
+        Move the robot relative to where it was using global axes.
+
+        Args:
+            pos_deltas (list): List of relative movements.
+                either [x, y, z, rx, ry, rz] or [x, y, z, qx, qy, qz, qw].
+            time (float/tuple, optional): If float, time step between each coordinate. If
+                tuple, first float represents time to first pos, second float is all following steps.
+            degrees (bool): True for degrees, False for radians. Ignore if using quaternions.
+            vis_only (bool, optional): True if no motion is desired, False if motion is desired.
+            wait (bool, optional): True if blocking is desired, False if non blocking is desired.
+        """
+        if type(time) == tuple and time[0] != 'cv':
+            raise ValueError(
+                "Time cannot be a standard tuple: relative movements do not need time to arrive at first point."
+            )
+        elif type(time) == tuple and len(time) == 3:
+            raise ValueError(
+                "Relative movements do not need time to arrive at first point. Use time=('cv',vel)"
+            )
+        elif type(time) == tuple and len(time) == 2:
+            time = (time[0],time[1],time[1])
+        else:
+            time=(time / len(pos_deltas), time - time / len(pos_deltas))
+
+        if type(pos_deltas) == str:  # Retrieve trajectory from json by name
+            pos_deltas = self.get_trajectory(pos_deltas)
+        elif type(pos_deltas[0]) != list:  # Format single point
+            pos_deltas = [pos_deltas]
+
+        sequence = []
+        for i, delta in enumerate(pos_deltas):
+            if i == 0:
+                curr = self.read_global_pos()
+                sequence.append([sum(x) for x in zip(curr, delta)])
+            else:
+                sequence.append([sum(x) for x in zip(sequence[i - 1], delta)])
+        self.move_global(
+            sequence,
+            time=time,
+            degrees=degrees,
+            vis_only=vis_only,
+            wait=wait,
+            interp=interp,
+        )
 
     def move_joints_r(
         self, joint_deltas, time=5, degrees=True, vis_only=False, wait=True, interp=None

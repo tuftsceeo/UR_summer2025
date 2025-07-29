@@ -84,7 +84,7 @@ class URKinematics():
             rot = np.roll(ee_pose[3:], 1)
             pose = np.concatenate((ee_pose[:3], rot), axis=0)
         else:
-            pose = ee_pose
+            pose = np.asarray(ee_pose) # edit to make this an np.array
         joint_configs = self.kinematics.inverse(pose.reshape(-1).tolist())
         n_solutions = int(len(joint_configs)/self.n_joints)
         joint_configs = np.asarray(joint_configs).reshape(n_solutions, self.n_joints)
