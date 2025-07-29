@@ -1,4 +1,6 @@
-#
+# Written by Leia Hannes, Hannah Loly, Chris Rogers
+# Center for Engineering Education and Outreach
+# Summer of 2025
 
 import rclpy, time
 from rclpy.node import Node
