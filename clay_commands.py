@@ -16,81 +16,81 @@ class ClaySculpt(MyUR3e):
             list.append(self.tool_wrench.get()["force"][2])
             time.sleep(.1)
         self.zero_force = np.average(list)
-def roll_coil(self, diameter, step=0.002, sweep=False, force_based=False, force_threshold=2.0):
-    """
-    Rolls a coil using the UR arm.
-
-    Parameters:
-        diameter (float): Final z-height to stop rolling [m].
-        step (float): Step size for z descent [m].
-        sweep (bool): If True, uses sweeping motion during roll.
-        force_based (bool): If True, descend using force threshold instead of fixed step.
-        force_threshold (float): Threshold force in Newtons to stop descent if force_based is True.
-
-    Returns:
-        None
-    """
-    self.calibrate_z()
-    force_detected = [0, 0, self.zero_force]
-
-    starting_pos = self.read_global_pos()
-    # go down until 2N force is felt
-    while force_detected[2] > (self.zero_force - force_threshold): # force in Newtons
-        force_detected = self.tool_wrench.get()["force"]
-        self.traj.relative_to_global([[0, 0, -step, 0, 0, 0]], starting_pos)
-        target = self.traj.trajectory[1]
-        self.move_global(target)
-        print(f"detected {force_detected[2]} N force.")
-        starting_pos = target
-    print(f"stop! detected {force_detected[2]} N force.")
-
-    center = self.read_global_pos()
-    z = center[2]
-
-    # move up for clearance
-    self.traj.relative_to_global([[0, 0, 0.05, 0, 0, 0]], center)
-    self.move_global(self.traj.trajectory)
-
-    center = [(center[0] - 0.03), center[1]] # use only x and y. add offset in x-direction to help center
-    # generate roll sequence centered on clay
-    if sweep==False:
-        self.traj.roll_sequence(center, length=0.11)
-    else:
-        self.traj.roll_sequence(center, sweep=True)
-    self.traj.set_z(z)
-
-    print("Begin roll sequence.")
-    while z > diameter:
-        print(f"z is {z}. move again. ")
-
-        if force_based:
-            contact = False
-            while not contact:
-                current_force = self.tool_wrench.get()["force"][2]
-                if current_force < (self.zero_force - force_threshold):
-                    contact = True
-                    print(f"Force threshold met: {current_force:.2f} N")
-                else:
-                    self.traj.relative_to_global([[0, 0, -.0005, 0, 0, 0]], self.traj.trajectory[0])
-                    next_pos = self.traj.trajectory[1]
-                    self.move_global(next_pos)
-                    z = next_pos[2]
-                    if z <= diameter:
-                        print("Desired diameter reached.")
-                        break
+    def roll_coil(self, diameter, step=0.002, sweep=False, force_based=False, force_threshold=2.0):
+        """
+        Rolls a coil using the UR arm.
+    
+        Parameters:
+            diameter (float): Final z-height to stop rolling [m].
+            step (float): Step size for z descent [m].
+            sweep (bool): If True, uses sweeping motion during roll.
+            force_based (bool): If True, descend using force threshold instead of fixed step.
+            force_threshold (float): Threshold force in Newtons to stop descent if force_based is True.
+    
+        Returns:
+            None
+        """
+        self.calibrate_z()
+        force_detected = [0, 0, self.zero_force]
+    
+        starting_pos = self.read_global_pos()
+        # go down until 2N force is felt
+        while force_detected[2] > (self.zero_force - force_threshold): # force in Newtons
+            force_detected = self.tool_wrench.get()["force"]
+            self.traj.relative_to_global([[0, 0, -step, 0, 0, 0]], starting_pos)
+            target = self.traj.trajectory[1]
+            self.move_global(target)
+            print(f"detected {force_detected[2]} N force.")
+            starting_pos = target
+        print(f"stop! detected {force_detected[2]} N force.")
+    
+        center = self.read_global_pos()
+        z = center[2]
+    
+        # move up for clearance
+        self.traj.relative_to_global([[0, 0, 0.05, 0, 0, 0]], center)
+        self.move_global(self.traj.trajectory)
+    
+        center = [(center[0] - 0.03), center[1]] # use only x and y. add offset in x-direction to help center
+        # generate roll sequence centered on clay
+        if sweep==False:
+            self.traj.roll_sequence(center, length=0.11)
         else:
-            self.traj.set_z(z)
-
-        self.move_global(self.traj.trajectory, 15)
-
-        if not force_based:
-            z -= step
-
-    # Move up and finish
-    self.traj.relative_to_global([[0, 0, 0.1, 0, 0, 0]], self.traj.trajectory[-1])
-    self.move_global(self.traj.trajectory)
-    print("done moving.")
-
+            self.traj.roll_sequence(center, sweep=True)
+        self.traj.set_z(z)
+    
+        print("Begin roll sequence.")
+        while z > diameter:
+            print(f"z is {z}. move again. ")
+    
+            if force_based:
+                contact = False
+                while not contact:
+                    current_force = self.tool_wrench.get()["force"][2]
+                    if current_force < (self.zero_force - force_threshold):
+                        contact = True
+                        print(f"Force threshold met: {current_force:.2f} N")
+                    else:
+                        self.traj.relative_to_global([[0, 0, -.0005, 0, 0, 0]], self.traj.trajectory[0])
+                        next_pos = self.traj.trajectory[1]
+                        self.move_global(next_pos)
+                        z = next_pos[2]
+                        if z <= diameter:
+                            print("Desired diameter reached.")
+                            break
+            else:
+                self.traj.set_z(z)
+    
+            self.move_global(self.traj.trajectory, 15)
+    
+            if not force_based:
+                z -= step
+    
+        # Move up and finish
+        self.traj.relative_to_global([[0, 0, 0.1, 0, 0, 0]], self.traj.trajectory[-1])
+        self.move_global(self.traj.trajectory)
+        print("done moving.")
+    
 
     def blend(self, height, offset_1=-.12, offset_2=.05, pass_width=.0025, length=.2, increment=.05, alternate=True):
         """
